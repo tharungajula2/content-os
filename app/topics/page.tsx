@@ -17,11 +17,14 @@ export default function TopicLibraryPage() {
 
   useEffect(() => {
     async function fetchExistingTopics() {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('videos')
         .select('topic_code')
         .or('is_archived.is.null,is_archived.eq.false');
       
+      if (data) {
+        setExistingTopicCodes(data.map(v => v.topic_code).filter(Boolean) as string[]);
+      }
       setLoading(false);
     }
     fetchExistingTopics();
@@ -37,6 +40,13 @@ export default function TopicLibraryPage() {
     
     setSpawningId(topic.topic_code);
     
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user?.email) {
+      alert('You must be signed in to spawn videos.');
+      setSpawningId(null);
+      return;
+    }
+
     const { data, error } = await supabase
       .from('videos')
       .insert({
@@ -49,18 +59,16 @@ export default function TopicLibraryPage() {
         status: 'idea',
         format_type: 'concept_3min',
         priority: 'medium',
-        created_by: (await supabase.auth.getUser()).data.user?.email
+        created_by: user.email
       })
       .select()
       .single();
 
     if (error) {
       console.error('Error spawning video:', error);
+      alert('Failed to spawn video: ' + error.message);
       setSpawningId(null);
-      return;
-    }
-
-    if (data) {
+    } else {
       router.push(`/video/${data.id}`);
     }
   };
@@ -74,101 +82,91 @@ export default function TopicLibraryPage() {
             <ChevronLeft className="w-5 h-5" />
             <span className="text-sm font-bold">Back</span>
           </Link>
-          
-          <div className="flex-1 min-w-0 px-2 text-center">
+          <div className="flex-1 text-center">
             <h1 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500">
               Topic Library
             </h1>
           </div>
-
-          <div className="w-12 shrink-0" /> {/* Spacer for symmetry */}
+          <div className="w-12 shrink-0" />
         </div>
 
         {/* Search Bar */}
         <div className="pb-4">
-          <div className="relative group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 group-focus-within:text-teal transition-colors" />
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
             <input 
               type="text" 
-              placeholder="Search topics or codes..."
+              placeholder="Filter topics..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-11 pr-4 text-sm outline-none focus:border-teal/50 transition-all placeholder:text-zinc-600"
+              className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-11 pr-4 text-sm outline-none focus:border-teal/50 transition-all"
             />
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 p-6 space-y-4">
+      <main className="flex-1 p-6">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <Loader2 className="w-8 h-8 text-teal animate-spin" />
-            <p className="text-xs font-black uppercase tracking-widest text-zinc-500">Syncing Library...</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Loading Library...</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">
             {filteredTopics.map((topic) => {
-              const inPipeline = existingTopicCodes.includes(topic.topic_code);
+              const isInPipeline = existingTopicCodes.includes(topic.topic_code);
               const isSpawning = spawningId === topic.topic_code;
 
               return (
-                <button
+                <div 
                   key={topic.topic_code}
-                  disabled={inPipeline || isSpawning}
-                  onClick={() => handleSpawnVideo(topic)}
-                  className={`relative flex flex-col text-left p-5 rounded-3xl border transition-all active:scale-[0.98] ${
-                    inPipeline 
-                      ? 'bg-white/5 border-white/5 opacity-60' 
-                      : 'bg-white/5 border-white/10 hover:border-teal/30 hover:bg-white/10'
+                  onClick={() => !isInPipeline && handleSpawnVideo(topic)}
+                  className={`relative overflow-hidden group bg-white/5 border rounded-[2rem] p-6 transition-all active:scale-[0.98] ${
+                    isInPipeline 
+                      ? 'border-white/5 opacity-50 grayscale' 
+                      : 'border-white/10 active:bg-white/10'
                   }`}
                 >
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <span className="text-[10px] font-black uppercase tracking-widest text-teal mb-1 block">
-                        {topic.topic_code} • {formatCategory(topic.category)}
+                  <div className="relative z-10 flex justify-between items-start gap-4">
+                    <div className="flex-1">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-teal/70 mb-1 block">
+                        {formatCategory(topic.category)}
                       </span>
-                      <h3 className="text-lg font-extrabold tracking-tight">
+                      <h3 className="text-lg font-extrabold tracking-tight text-white/90 leading-tight">
                         {topic.title}
                       </h3>
+                      <p className="text-xs text-zinc-500 mt-2 line-clamp-2 font-medium">
+                        {topic.concept_summary}
+                      </p>
                     </div>
-                    {inPipeline ? (
-                      <div className="flex items-center gap-1.5 bg-teal/20 text-teal px-3 py-1 rounded-full border border-teal/20">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span className="text-[10px] font-black uppercase tracking-widest">In Pipeline</span>
-                      </div>
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-teal text-navy flex items-center justify-center shadow-lg shadow-teal/20">
-                        {isSpawning ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
+
+                    <div className="shrink-0">
+                      {isInPipeline ? (
+                        <div className="bg-teal/10 text-teal p-3 rounded-2xl">
+                          <CheckCircle2 className="w-5 h-5" />
+                        </div>
+                      ) : isSpawning ? (
+                        <div className="bg-teal text-navy p-3 rounded-2xl animate-pulse">
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        </div>
+                      ) : (
+                        <div className="bg-white/10 text-white p-3 rounded-2xl group-active:bg-teal group-active:text-navy transition-colors">
                           <Plus className="w-5 h-5" />
-                        )}
-                      </div>
-                    )}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  <p className="text-xs text-zinc-400 line-clamp-2 mb-4 leading-relaxed">
-                    {topic.concept_summary}
-                  </p>
-
-                  {!inPipeline && (
-                    <div className="mt-auto pt-4 border-t border-white/5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Hook Idea:</span>
-                        <span className="text-[10px] font-bold text-zinc-300 truncate">{topic.hook_idea}</span>
-                      </div>
+                  {isInPipeline && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-navy/20 backdrop-blur-[2px]">
+                      <span className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40 rotate-12">
+                        In Pipeline
+                      </span>
                     </div>
                   )}
-                </button>
+                </div>
               );
             })}
-
-            {filteredTopics.length === 0 && (
-              <div className="text-center py-20">
-                <p className="text-zinc-500 text-sm italic">No topics found matching "{searchQuery}"</p>
-              </div>
-            )}
           </div>
         )}
       </main>

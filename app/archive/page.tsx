@@ -31,6 +31,7 @@ export default function ArchiveVaultPage() {
 
   const handleRestore = async (id: string) => {
     setVideos(prev => prev.filter(v => v.id !== id));
+    await supabase.from('videos').update({ is_archived: false }).eq('id', id);
     router.refresh();
   };
 

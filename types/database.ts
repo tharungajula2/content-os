@@ -100,6 +100,7 @@ export interface Database {
           is_xp_awarded?: boolean
           is_archived?: boolean
         }
+        Relationships: []
       }
       video_comments: {
         Row: {
@@ -123,6 +124,14 @@ export interface Database {
           content?: string
           created_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "video_comments_video_id_fkey"
+            columns: ["video_id"]
+            referencedRelation: "videos"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       video_links: {
         Row: {
@@ -149,6 +158,14 @@ export interface Database {
           added_by?: string
           created_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "video_links_video_id_fkey"
+            columns: ["video_id"]
+            referencedRelation: "videos"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       gamification: {
         Row: {
@@ -175,7 +192,20 @@ export interface Database {
           total_published?: number
           last_publish_date?: string | null
         }
+        Relationships: []
       }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
     }
   }
 }

@@ -49,7 +49,8 @@ const STATUS_MAPPING: Record<string, string> = {
 };
 
 export default function VideoDetailPage() {
-  const { id } = useParams();
+  const params = useParams();
+  const id = params?.id as string;
   const router = useRouter();
   const [video, setVideo] = useState<Video | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -63,6 +64,7 @@ export default function VideoDetailPage() {
   const [newLink, setNewLink] = useState({ url: '', description: '' });
 
   const fetchData = useCallback(async () => {
+    if (!id) return;
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (user) setCurrentUserEmail(user.email!);
@@ -90,7 +92,7 @@ export default function VideoDetailPage() {
   }, [fetchData]);
 
   const handleSave = async () => {
-    if (!video) return;
+    if (!video || !id) return;
     setSaving(true);
     const { error } = await supabase
       .from('videos')
@@ -98,28 +100,18 @@ export default function VideoDetailPage() {
       .eq('id', id);
 
     if (error) console.error('Error saving video:', error);
-    
-    if (video.status === 'published') {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user?.email) {
-        await awardPublishXP(id as string, user.email);
-      }
-    }
-    
     setSaving(false);
+    router.refresh();
   };
 
   const handleAddComment = async () => {
-    if (!newComment.trim()) return;
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
+    if (!newComment.trim() || !currentUserEmail || !id) return;
     const { data, error } = await supabase
       .from('video_comments')
       .insert({
-        video_id: id as string,
-        user_email: user.email!,
-        content: newComment // Use 'content' as per schema
+        video_id: id,
+        user_email: currentUserEmail,
+        content: newComment
       })
       .select()
       .single();
@@ -131,17 +123,14 @@ export default function VideoDetailPage() {
   };
 
   const handleAddLink = async () => {
-    if (!newLink.url.trim()) return;
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
+    if (!newLink.url.trim() || !currentUserEmail || !id) return;
     const { data, error } = await supabase
       .from('video_links')
       .insert({
-        video_id: id as string,
+        video_id: id,
         url: newLink.url,
         description: newLink.description,
-        added_by: user.email!
+        added_by: currentUserEmail
       })
       .select()
       .single();
@@ -153,7 +142,7 @@ export default function VideoDetailPage() {
   };
 
   const handleToggleApproval = async (userNum: 1 | 2) => {
-    if (!video) return;
+    if (!video || !id) return;
     const field = userNum === 1 ? 'approved_by_1' : 'approved_by_2';
     const newValue = !video[field];
     
@@ -161,11 +150,16 @@ export default function VideoDetailPage() {
     
     await supabase
       .from('videos')
-      .update({ [field]: newValue })
+      .update({ [field]: newValue } as any)
       .eq('id', id);
   };
 
   const handleArchive = async () => {
+    if (!id) return;
+    const { error } = await supabase
+      .from('videos')
+      .update({ is_archived: true })
+      .eq('id', id);
 
     if (error) {
       console.error('Error archiving video:', error);
@@ -186,378 +180,379 @@ export default function VideoDetailPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-navy text-white pb-safe">
-      <header className="sticky top-0 z-50 w-full bg-navy/95 backdrop-blur-xl border-b border-white/5 pt-safe px-6">
-        <div className="flex items-center gap-4 h-16">
-          <button onClick={() => router.push('/')} className="flex items-center gap-1.5 text-zinc-400 active:text-teal transition-colors shrink-0">
-            <ChevronLeft className="w-5 h-5" />
-            <span className="text-sm font-bold">Back</span>
-          </button>
-          <div className="flex-1 min-w-0 px-2">
-            <h1 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500 truncate">
-              {video.title}
-            </h1>
-          </div>
+      {/* Sticky Top Bar */}
+      <header className="sticky top-0 z-40 w-full bg-navy/95 backdrop-blur-xl border-b border-white/5 pt-safe px-6">
+        <div className="flex items-center justify-between h-16">
           <button 
-            onClick={handleSave} 
-            disabled={saving}
-            className="flex items-center gap-2 bg-teal text-navy px-5 py-2.5 rounded-full text-xs font-black uppercase active:scale-95 transition-all disabled:opacity-50 shrink-0"
+            onClick={() => router.back()}
+            className="p-2 -ml-2 text-zinc-400 active:text-teal transition-colors"
           >
-            {saving ? <div className="w-3 h-3 border-2 border-navy border-t-transparent rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
-            Save
+            <ChevronLeft className="w-6 h-6" />
           </button>
+
+          <div className="flex items-center gap-3">
+             <button 
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-2 bg-teal text-navy px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest active:scale-95 transition-all disabled:opacity-50"
+            >
+              <Save className="w-3.5 h-3.5" />
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-3 -mx-2 px-2">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${
+                activeTab === tab.id 
+                  ? 'bg-white/10 text-teal shadow-lg border border-teal/20' 
+                  : 'text-zinc-500'
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
         </div>
       </header>
 
-      <div className="sticky top-16 z-40 bg-navy/95 backdrop-blur-md border-b border-white/5 flex overflow-x-auto hide-scrollbar shrink-0">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-6 py-4 border-b-2 transition-all whitespace-nowrap text-xs font-bold uppercase tracking-widest ${
-              activeTab === tab.id 
-                ? 'border-teal text-teal bg-teal/5' 
-                : 'border-transparent text-zinc-500'
-            }`}
-          >
-            {tab.icon}
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      <main className="flex-1 p-6 space-y-8 overflow-y-auto">
+      <main className="flex-1 p-6 space-y-8">
         {activeTab === 'overview' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Title Section */}
             <div className="space-y-4">
-              <Field label="Video Title">
-                <input 
-                  type="text" 
-                  value={video.title || ''} 
-                  onChange={e => setVideo({...video, title: e.target.value})}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-base focus:border-teal outline-none transition-all"
-                />
-              </Field>
-
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Category">
-                  <select 
-                    value={video.category || ''} 
-                    onChange={e => setVideo({...video, category: e.target.value})}
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-base focus:border-teal outline-none transition-all cursor-pointer text-white appearance-none"
-                    style={{ 
-                      colorScheme: 'dark',
-                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                      backgroundRepeat: 'no-repeat',
-                      backgroundPosition: 'right 1rem center',
-                      backgroundSize: '1.2em'
-                    }}
-                  >
-                    {CATEGORIES.map(c => <option key={c} value={c} className="bg-navy text-white">{formatCategory(c)}</option>)}
-                  </select>
-                </Field>
-                <Field label="Format">
-                  <select 
-                    value={video.format_type || ''} 
-                    onChange={e => setVideo({...video, format_type: e.target.value})}
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-base focus:border-teal outline-none transition-all cursor-pointer text-white appearance-none"
-                    style={{ 
-                      colorScheme: 'dark',
-                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                      backgroundRepeat: 'no-repeat',
-                      backgroundPosition: 'right 1rem center',
-                      backgroundSize: '1.2em'
-                    }}
-                  >
-                    {FORMATS.map(f => <option key={f} value={f} className="bg-navy text-white">{formatFormatType(f)}</option>)}
-                  </select>
-                </Field>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Status">
-                  <select 
-                    value={video.status || ''} 
-                    onChange={e => setVideo({...video, status: e.target.value})}
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-base focus:border-teal outline-none transition-all cursor-pointer text-white appearance-none"
-                    style={{ 
-                      colorScheme: 'dark',
-                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                      backgroundRepeat: 'no-repeat',
-                      backgroundPosition: 'right 1rem center',
-                      backgroundSize: '1.2em'
-                    }}
-                  >
-                    {STATUSES.map(s => <option key={s} value={s} className="bg-navy text-white">{formatStatus(s)}</option>)}
-                  </select>
-                </Field>
-                <Field label="Priority">
-                  <select 
-                    value={video.priority || ''} 
-                    onChange={e => setVideo({...video, priority: e.target.value})}
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-base focus:border-teal outline-none transition-all cursor-pointer text-white appearance-none"
-                    style={{ 
-                      colorScheme: 'dark',
-                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                      backgroundRepeat: 'no-repeat',
-                      backgroundPosition: 'right 1rem center',
-                      backgroundSize: '1.2em'
-                    }}
-                  >
-                    {PRIORITIES.map(p => <option key={p} value={p} className="bg-navy text-white">{formatPriority(p)}</option>)}
-                  </select>
-                </Field>
-              </div>
-
-              <Field label="Target Date">
-                <input 
-                  type="date" 
-                  value={video.target_date || ''} 
-                  onChange={e => setVideo({...video, target_date: e.target.value})}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-base focus:border-teal outline-none transition-all"
-                />
-              </Field>
-
-              <Field label="Concept Summary">
-                <textarea 
-                  rows={4}
-                  value={video.concept_summary || ''} 
-                  onChange={e => setVideo({...video, concept_summary: e.target.value})}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-base focus:border-teal outline-none transition-all resize-none"
-                />
-              </Field>
-
-              <Field label="Hook Idea">
-                <textarea 
-                  rows={3}
-                  value={video.hook_idea || ''} 
-                  onChange={e => setVideo({...video, hook_idea: e.target.value})}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-base focus:border-teal outline-none transition-all resize-none"
-                />
-              </Field>
-
-              <Field label="Best Example">
-                <textarea 
-                  rows={3}
-                  value={video.best_example || ''} 
-                  onChange={e => setVideo({...video, best_example: e.target.value})}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-base focus:border-teal outline-none transition-all resize-none"
-                />
-              </Field>
-
-              <div className="pt-8 border-t border-white/5">
-                <button 
-                  onClick={() => setShowArchiveConfirm(true)}
-                  className="w-full bg-red-500/10 text-red-500 border border-red-500/20 py-4 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Archive Video
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'script' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-             <Field label="Draft / Notes">
-                <TipTapEditor 
-                  value={video.script_notes || ''} 
-                  onChange={val => setVideo({...video, script_notes: val})}
-                  placeholder="Start brainstorming..."
-                />
-              </Field>
-              <Field label="Final Verified Script">
-                <TipTapEditor 
-                  value={video.script_final || ''} 
-                  onChange={val => setVideo({...video, script_final: val})}
-                  placeholder="Paste final script here..."
-                  className="bg-teal/5 border-teal/20"
-                />
-              </Field>
-          </div>
-        )}
-
-        {activeTab === 'verification' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-            <div className="grid grid-cols-2 gap-4">
-               <Field label="Accuracy (1-10)">
-                  <input 
-                    type="number" min="1" max="10"
-                    value={video.verification_accuracy || 0} 
-                    onChange={e => setVideo({...video, verification_accuracy: parseInt(e.target.value)})}
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-base focus:border-teal outline-none transition-all"
-                  />
-                </Field>
-                <Field label="Pedagogy (1-10)">
-                  <input 
-                    type="number" min="1" max="10"
-                    value={video.verification_pedagogy || 0} 
-                    onChange={e => setVideo({...video, verification_pedagogy: parseInt(e.target.value)})}
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-base focus:border-teal outline-none transition-all"
-                  />
-                </Field>
-            </div>
-            <Field label="Verification Notes (AI Feedback)">
-              <textarea 
-                rows={8}
-                value={video.verification_notes || ''} 
-                onChange={e => setVideo({...video, verification_notes: e.target.value})}
-                className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-base focus:border-teal outline-none transition-all"
-              />
-            </Field>
-          </div>
-        )}
-
-        {activeTab === 'media' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-            <div className="space-y-4">
-              <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500">Add New Link</h3>
-              <div className="bg-white/5 p-4 rounded-3xl border border-white/10 space-y-4">
-                <input 
-                  type="url" placeholder="URL"
-                  value={newLink.url}
-                  onChange={e => setNewLink({...newLink, url: e.target.value})}
-                  className="w-full bg-navy border border-white/10 rounded-xl p-3 text-sm outline-none focus:border-teal"
-                />
-                <input 
-                  type="text" placeholder="Description"
-                  value={newLink.description}
-                  onChange={e => setNewLink({...newLink, description: e.target.value})}
-                  className="w-full bg-navy border border-white/10 rounded-xl p-3 text-sm outline-none focus:border-teal"
-                />
-                <button 
-                  onClick={handleAddLink}
-                  className="w-full bg-teal text-navy py-3 rounded-xl text-xs font-black uppercase active:scale-95 transition-all"
-                >
-                  Add Media Link
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500">Resources</h3>
-              {links.map(link => (
-                <a key={link.id} href={link.url} target="_blank" className="block bg-white/5 p-4 rounded-2xl border border-white/10 active:bg-white/10 transition-all">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-teal/10 rounded-lg"><LinkIcon className="w-4 h-4 text-teal" /></div>
-                    <div>
-                      <p className="text-sm font-bold text-white/90">{link.description || 'Reference Link'}</p>
-                      <p className="text-[10px] text-zinc-500 truncate max-w-[200px]">{link.url}</p>
-                    </div>
-                  </div>
-                </a>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'team' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300 flex flex-col h-full">
-            <div className="grid grid-cols-2 gap-4 shrink-0">
-               <button 
-                onClick={() => handleToggleApproval(1)}
-                className={`flex flex-col items-center justify-center p-4 rounded-3xl border transition-all ${
-                  video.approved_by_1 ? 'bg-teal text-navy border-teal' : 'bg-white/5 text-zinc-500 border-white/10'
-                }`}
-               >
-                 <span className="text-[10px] font-black uppercase tracking-widest opacity-70">User 1</span>
-                 <span className="text-sm font-bold">{video.approved_by_1 ? 'APPROVED' : 'APPROVE'}</span>
-               </button>
-               <button 
-                onClick={() => handleToggleApproval(2)}
-                className={`flex flex-col items-center justify-center p-4 rounded-3xl border transition-all ${
-                  video.approved_by_2 ? 'bg-teal text-navy border-teal' : 'bg-white/5 text-zinc-500 border-white/10'
-                }`}
-               >
-                 <span className="text-[10px] font-black uppercase tracking-widest opacity-70">User 2</span>
-                 <span className="text-sm font-bold">{video.approved_by_2 ? 'APPROVED' : 'APPROVE'}</span>
-               </button>
-            </div>
-
-            <div className="flex-1 space-y-4 overflow-y-auto min-h-[300px] p-2">
-              {comments.map(c => {
-                const isMe = c.user_email === currentUserEmail;
-                return (
-                  <div 
-                    key={c.id} 
-                    className={`flex flex-col max-w-[85%] ${isMe ? 'ml-auto items-end' : 'mr-auto items-start'}`}
-                  >
-                    <div className={`px-4 py-3 rounded-2xl shadow-sm ${
-                      isMe ? 'bg-teal text-navy rounded-tr-none' : 'bg-white/5 text-white border border-white/10 rounded-tl-none'
-                    }`}>
-                      <p className="text-sm leading-relaxed">{c.content}</p>
-                    </div>
-                    <div className="flex items-center gap-2 mt-1 px-1">
-                      <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">
-                        {c.user_email.split('@')[0]}
-                      </span>
-                      <span className="text-[9px] text-zinc-600">
-                        {new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="flex gap-2 shrink-0 pb-10 pt-4">
+              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-teal/70">Working Title</span>
               <input 
-                type="text" placeholder="Type a note..."
-                value={newComment}
-                onChange={e => setNewComment(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleAddComment()}
-                className="flex-1 bg-white/5 border border-white/10 rounded-2xl p-4 text-base focus:border-teal outline-none transition-all"
+                value={video.title}
+                onChange={(e) => setVideo({...video, title: e.target.value})}
+                className="w-full bg-transparent text-3xl font-black italic tracking-tighter outline-none placeholder:text-white/10"
+                placeholder="Name your masterpiece..."
               />
+            </div>
+
+            {/* Grid Controls */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-1">Status</label>
+                <select 
+                  value={video.status}
+                  onChange={(e) => setVideo({...video, status: e.target.value})}
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-xs font-bold appearance-none outline-none focus:border-teal/50"
+                >
+                  {STATUSES.map(s => <option key={s} value={s}>{formatStatus(s)}</option>)}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-1">Category</label>
+                <select 
+                  value={video.category}
+                  onChange={(e) => setVideo({...video, category: e.target.value})}
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-xs font-bold appearance-none outline-none focus:border-teal/50"
+                >
+                  {CATEGORIES.map(c => <option key={c} value={c}>{formatCategory(c)}</option>)}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-1">Format</label>
+                <select 
+                  value={video.format_type}
+                  onChange={(e) => setVideo({...video, format_type: e.target.value})}
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-xs font-bold appearance-none outline-none focus:border-teal/50"
+                >
+                  {FORMATS.map(f => <option key={f} value={f}>{formatFormatType(f)}</option>)}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-1">Priority</label>
+                <select 
+                  value={video.priority}
+                  onChange={(e) => setVideo({...video, priority: e.target.value})}
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-xs font-bold appearance-none outline-none focus:border-teal/50"
+                >
+                  {PRIORITIES.map(p => <option key={p} value={p}>{formatPriority(p)}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Concept Summary */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-1">Concept Summary</label>
+              <textarea 
+                value={video.concept_summary || ''}
+                onChange={(e) => setVideo({...video, concept_summary: e.target.value})}
+                className="w-full bg-white/5 border border-white/10 rounded-[2rem] p-6 text-sm leading-relaxed outline-none focus:border-teal/50 min-h-[120px]"
+                placeholder="What's the core idea?"
+              />
+            </div>
+
+            {/* Archive Button */}
+            <div className="pt-8 border-t border-white/5">
               <button 
-                onClick={handleAddComment}
-                className="w-14 h-14 bg-teal text-navy rounded-2xl flex items-center justify-center active:scale-90 transition-all"
+                onClick={() => setShowArchiveConfirm(true)}
+                className="w-full flex items-center justify-center gap-2 bg-red-500/10 text-red-500 border border-red-500/20 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all"
               >
-                <Send className="w-6 h-6" />
+                <Trash2 className="w-4 h-4" />
+                Archive Video
               </button>
             </div>
           </div>
         )}
 
-        {activeTab === 'published' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-             <Field label="YouTube URL">
-                <input 
-                  type="url" 
-                  value={video.youtube_url || ''} 
-                  onChange={e => setVideo({...video, youtube_url: e.target.value})}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-base focus:border-teal outline-none transition-all"
-                  placeholder="https://youtube.com/watch?v=..."
+        {activeTab === 'script' && (
+          <div className="space-y-6 animate-in fade-in duration-500">
+            <div className="space-y-4">
+              <label className="text-[10px] font-black uppercase tracking-[0.3em] text-teal/70">Final Script</label>
+              <div className="bg-white/5 border border-white/10 rounded-[2.5rem] overflow-hidden min-h-[400px]">
+                <TipTapEditor 
+                  value={video.script_final || ''} 
+                  onChange={(val) => setVideo({...video, script_final: val})} 
                 />
-              </Field>
-              <Field label="Final Title">
-                <input 
-                  type="text" 
-                  value={video.final_title || ''} 
-                  onChange={e => setVideo({...video, final_title: e.target.value})}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-base focus:border-teal outline-none transition-all"
-                />
-              </Field>
-              <Field label="Tags (Comma Separated)">
-                <input 
-                  type="text" 
-                  value={video.tags?.join(', ') || ''} 
-                  onChange={e => setVideo({...video, tags: e.target.value.split(',').map(t => t.trim())})}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-base focus:border-teal outline-none transition-all"
-                />
-              </Field>
-              <Field label="Analytics Notes">
-                <textarea 
-                  rows={6}
-                  value={video.analytics_notes || ''} 
-                  onChange={e => setVideo({...video, analytics_notes: e.target.value})}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-base focus:border-teal outline-none transition-all"
-                />
-              </Field>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-1">Script Notes</label>
+              <textarea 
+                value={video.script_notes || ''}
+                onChange={(e) => setVideo({...video, script_notes: e.target.value})}
+                className="w-full bg-white/5 border border-white/10 rounded-[2rem] p-6 text-sm leading-relaxed outline-none focus:border-teal/50 min-h-[150px]"
+                placeholder="Drafting notes, hooks, and research links..."
+              />
+            </div>
           </div>
         )}
 
+        {activeTab === 'verification' && (
+          <div className="space-y-8 animate-in fade-in duration-500">
+             <div className="bg-amber/5 border border-amber/10 rounded-[2rem] p-6 space-y-4">
+                <div className="flex items-center gap-3 text-amber">
+                  <AlertTriangle className="w-5 h-5" />
+                  <h3 className="text-xs font-black uppercase tracking-widest">Quality Assurance</h3>
+                </div>
+                <p className="text-xs text-amber/70 leading-relaxed">
+                  Every video must pass accuracy and pedagogy checks before being marked as Finalized.
+                </p>
+             </div>
+
+             <div className="grid grid-cols-1 gap-6">
+                <div className="space-y-4">
+                  <div className="flex justify-between items-end">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Accuracy (0-100)</label>
+                    <span className="text-xl font-black italic text-teal">{video.verification_accuracy || 0}%</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="0" max="100" 
+                    value={video.verification_accuracy || 0}
+                    onChange={(e) => setVideo({...video, verification_accuracy: parseInt(e.target.value)})}
+                    className="w-full accent-teal"
+                  />
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex justify-between items-end">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Pedagogy (0-100)</label>
+                    <span className="text-xl font-black italic text-amber">{video.verification_pedagogy || 0}%</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="0" max="100" 
+                    value={video.verification_pedagogy || 0}
+                    onChange={(e) => setVideo({...video, verification_pedagogy: parseInt(e.target.value)})}
+                    className="w-full accent-amber"
+                  />
+                </div>
+             </div>
+
+             <div className="space-y-4">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-1">Verification Notes</label>
+                <textarea 
+                  value={video.verification_notes || ''}
+                  onChange={(e) => setVideo({...video, verification_notes: e.target.value})}
+                  className="w-full bg-white/5 border border-white/10 rounded-[2rem] p-6 text-sm leading-relaxed outline-none focus:border-teal/50 min-h-[120px]"
+                  placeholder="Any corrections or pedagogy improvements?"
+                />
+             </div>
+          </div>
+        )}
+
+        {activeTab === 'media' && (
+          <div className="space-y-8 animate-in fade-in duration-500">
+             <div className="space-y-4">
+                <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500 ml-1">Add Link or Asset</h3>
+                <div className="bg-white/5 border border-white/10 rounded-3xl p-4 space-y-3">
+                  <input 
+                    placeholder="URL (Drive, Figma, YouTube...)"
+                    value={newLink.url}
+                    onChange={(e) => setNewLink({...newLink, url: e.target.value})}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm outline-none focus:border-teal/30"
+                  />
+                  <div className="flex gap-2">
+                    <input 
+                      placeholder="Description"
+                      value={newLink.description}
+                      onChange={(e) => setNewLink({...newLink, description: e.target.value})}
+                      className="flex-1 bg-white/5 border border-white/10 rounded-xl p-3 text-sm outline-none focus:border-teal/30"
+                    />
+                    <button 
+                      onClick={handleAddLink}
+                      className="bg-teal text-navy px-4 rounded-xl active:scale-95 transition-all"
+                    >
+                      <Plus className="w-5 h-5 stroke-[3]" />
+                    </button>
+                  </div>
+                </div>
+             </div>
+
+             <div className="space-y-3">
+               {links.map((link) => (
+                 <a 
+                   key={link.id} 
+                   href={link.url} 
+                   target="_blank" 
+                   rel="noopener noreferrer"
+                   className="flex items-center gap-4 bg-white/5 border border-white/10 p-4 rounded-2xl active:bg-white/10 transition-colors"
+                 >
+                   <div className="w-10 h-10 bg-teal/10 text-teal rounded-xl flex items-center justify-center shrink-0">
+                     <LinkIcon className="w-5 h-5" />
+                   </div>
+                   <div className="flex-1 min-w-0">
+                     <p className="text-sm font-bold truncate">{link.description || link.url}</p>
+                     <p className="text-[10px] text-zinc-500 truncate">{link.url}</p>
+                   </div>
+                 </a>
+               ))}
+             </div>
+          </div>
+        )}
+
+        {activeTab === 'team' && (
+          <div className="flex flex-col h-[calc(100vh-280px)] animate-in fade-in duration-500">
+             {/* Chat Messages */}
+             <div className="flex-1 overflow-y-auto space-y-4 pb-4 px-1">
+                {comments.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-8 opacity-20">
+                    <MessageSquare className="w-12 h-12 mb-4" />
+                    <p className="text-sm font-bold uppercase tracking-widest">No notes yet</p>
+                  </div>
+                ) : (
+                  comments.map((comment) => {
+                    const isMe = comment.user_email === currentUserEmail;
+                    return (
+                      <div key={comment.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                        <div className={`max-w-[85%] p-4 rounded-2xl text-sm leading-relaxed ${
+                          isMe ? 'bg-teal text-navy rounded-tr-none font-medium' : 'bg-white/5 border border-white/10 text-white rounded-tl-none'
+                        }`}>
+                          {comment.content}
+                        </div>
+                        <span className="text-[8px] font-black uppercase tracking-widest text-zinc-500 mt-1.5 px-1">
+                          {isMe ? 'Me' : comment.user_email.split('@')[0]} • {new Date(comment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+             </div>
+
+             {/* Chat Input */}
+             <div className="pt-4 mt-auto">
+               <div className="flex gap-2 bg-white/5 border border-white/10 rounded-2xl p-2 pl-4 focus-within:border-teal/50 transition-all">
+                 <input 
+                   placeholder="Type a team note..."
+                   value={newComment}
+                   onChange={(e) => setNewComment(e.target.value)}
+                   onKeyDown={(e) => e.key === 'Enter' && handleAddComment()}
+                   className="flex-1 bg-transparent border-none outline-none text-sm py-2"
+                 />
+                 <button 
+                  onClick={handleAddComment}
+                  className="bg-teal text-navy p-3 rounded-xl active:scale-95 transition-all shadow-lg shadow-teal/20"
+                 >
+                   <Send className="w-4 h-4" />
+                 </button>
+               </div>
+             </div>
+          </div>
+        )}
+
+        {activeTab === 'published' && (
+          <div className="space-y-8 animate-in fade-in duration-500">
+             <div className="space-y-4">
+                <label className="text-[10px] font-black uppercase tracking-[0.3em] text-teal/70">Final YouTube URL</label>
+                <div className="flex gap-2">
+                  <input 
+                    value={video.youtube_url || ''}
+                    onChange={(e) => setVideo({...video, youtube_url: e.target.value})}
+                    className="flex-1 bg-white/5 border border-white/10 rounded-2xl p-4 text-sm outline-none focus:border-teal/50"
+                    placeholder="https://youtube.com/watch?v=..."
+                  />
+                  {video.youtube_url && (
+                    <a 
+                      href={video.youtube_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="bg-red-500 text-white p-4 rounded-2xl active:scale-95 transition-all"
+                    >
+                      <Play className="w-5 h-5 fill-current" />
+                    </a>
+                  )}
+                </div>
+             </div>
+
+             <div className="space-y-4">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-1">Final Public Title</label>
+                <input 
+                  value={video.final_title || ''}
+                  onChange={(e) => setVideo({...video, final_title: e.target.value})}
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm font-bold outline-none focus:border-teal/50"
+                  placeholder="The title that viewers see..."
+                />
+             </div>
+
+             <div className="pt-8 space-y-4">
+                <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500 ml-1 text-center">Team Approvals</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <button 
+                    onClick={() => handleToggleApproval(1)}
+                    className={`flex items-center justify-center gap-3 py-6 rounded-3xl border transition-all ${
+                      video.approved_by_1 ? 'bg-teal text-navy border-teal' : 'bg-white/5 border-white/10 text-zinc-500'
+                    }`}
+                  >
+                    <CheckSquare className="w-5 h-5" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Master 01</span>
+                  </button>
+                  <button 
+                    onClick={() => handleToggleApproval(2)}
+                    className={`flex items-center justify-center gap-3 py-6 rounded-3xl border transition-all ${
+                      video.approved_by_2 ? 'bg-teal text-navy border-teal' : 'bg-white/5 border-white/10 text-zinc-500'
+                    }`}
+                  >
+                    <CheckSquare className="w-5 h-5" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Master 02</span>
+                  </button>
+                </div>
+             </div>
+
+             {video.approved_by_1 && video.approved_by_2 && !video.is_xp_awarded && (
+               <div className="bg-teal/10 border border-teal/20 rounded-[2.5rem] p-8 text-center space-y-4 animate-in zoom-in duration-500">
+                  <div className="w-16 h-16 bg-teal text-navy rounded-full flex items-center justify-center mx-auto shadow-xl">
+                    <Trophy className="w-8 h-8" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black italic tracking-tighter">MISSION COMPLETE</h3>
+                    <p className="text-xs text-teal/70 font-medium">Both masters have signed off. Ready for deployment.</p>
+                  </div>
+               </div>
+             )}
+          </div>
+        )}
       </main>
 
+      {/* Archive Confirmation Modal */}
       {showArchiveConfirm && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
           <div className="absolute inset-0 bg-navy/80 backdrop-blur-sm" onClick={() => setShowArchiveConfirm(false)} />
@@ -565,14 +560,14 @@ export default function VideoDetailPage() {
             <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mb-6 mx-auto">
               <AlertTriangle className="w-8 h-8" />
             </div>
-            <h2 className="text-xl font-extrabold text-center mb-2">Archive Video?</h2>
-            <p className="text-zinc-400 text-center text-sm mb-8 leading-relaxed">
-              This will move the video to the Archive Vault. You can restore it later if needed.
+            <h2 className="text-xl font-extrabold text-center mb-2 text-white">Move to Archive?</h2>
+            <p className="text-zinc-400 text-center text-sm mb-8 leading-relaxed font-medium">
+              This will remove the video from the main dashboard and move it to the Archive Vault.
             </p>
             <div className="space-y-3">
               <button 
                 onClick={handleArchive}
-                className="w-full bg-red-500 text-white py-4 rounded-2xl text-xs font-black uppercase tracking-widest active:scale-95 transition-all shadow-lg shadow-red-500/20"
+                className="w-full bg-red-600 text-white py-4 rounded-2xl text-xs font-black uppercase tracking-widest active:scale-95 transition-all shadow-lg shadow-red-600/20"
               >
                 Confirm Archive
               </button>
@@ -590,11 +585,46 @@ export default function VideoDetailPage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Trophy(props: any) {
   return (
-    <div className="flex flex-col gap-2">
-      <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-1">{label}</label>
-      {children}
-    </div>
-  );
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+      <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+      <path d="M4 22h16" />
+      <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+      <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+      <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+    </svg>
+  )
+}
+
+function Plus(props: any) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M5 12h14" />
+      <path d="M12 5v14" />
+    </svg>
+  )
 }

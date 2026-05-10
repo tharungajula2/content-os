@@ -11,6 +11,14 @@ export default function FAB({ userId }: { userId: string }) {
 
   const handleCreateIdea = async () => {
     setLoading(true);
+    
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user?.email) {
+      alert('You must be signed in to create ideas.');
+      setLoading(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from('videos')
       .insert({
@@ -19,7 +27,7 @@ export default function FAB({ userId }: { userId: string }) {
         category: 'WEL', // Default category
         priority: 'medium',
         format_type: 'concept_3min',
-        created_by: (await supabase.auth.getUser()).data.user?.email,
+        created_by: user.email,
       })
       .select()
       .single();
