@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { ChevronLeft, Trophy, Flame, Play, Star, Lock, Loader2 } from 'lucide-react';
