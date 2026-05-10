@@ -22,9 +22,6 @@ export default function TopicLibraryPage() {
         .select('topic_code')
         .or('is_archived.is.null,is_archived.eq.false');
       
-      if (data) {
-        setExistingTopicCodes(data.map(v => v.topic_code).filter(Boolean) as string[]);
-      }
       setLoading(false);
     }
     fetchExistingTopics();
