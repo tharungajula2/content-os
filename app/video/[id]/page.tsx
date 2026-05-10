@@ -166,10 +166,6 @@ export default function VideoDetailPage() {
   };
 
   const handleArchive = async () => {
-    const { error } = await supabase
-      .from('videos')
-      .update({ is_archived: true })
-      .eq('id', id);
 
     if (error) {
       console.error('Error archiving video:', error);
