@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { ChevronLeft, Search, PlayCircle, Clock, Play, ExternalLink, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { formatStatus } from '@/lib/formatters';
 
@@ -133,6 +134,9 @@ export default function DirectoryPage() {
                   </div>
                   
                   {video.youtube_url && (
+                    <div className="shrink-0 p-2.5 bg-red-500/10 text-red-500 rounded-xl border border-red-500/20 active:scale-90 transition-transform">
+                       <Play className="w-4 h-4 fill-current" />
+                    </div>
                   )}
                   
                   {!video.youtube_url && (
