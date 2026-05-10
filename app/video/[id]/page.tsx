@@ -262,7 +262,7 @@ export default function VideoDetailPage() {
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-1">Format</label>
                 <select 
-                  value={video.format_type}
+                  value={video.format_type || ''}
                   onChange={(e) => setVideo({...video, format_type: e.target.value})}
                   className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-xs font-bold appearance-none outline-none focus:border-teal/50"
                 >
@@ -272,7 +272,7 @@ export default function VideoDetailPage() {
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-1">Priority</label>
                 <select 
-                  value={video.priority}
+                  value={video.priority || ''}
                   onChange={(e) => setVideo({...video, priority: e.target.value})}
                   className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-xs font-bold appearance-none outline-none focus:border-teal/50"
                 >

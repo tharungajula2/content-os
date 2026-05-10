@@ -76,7 +76,7 @@ export default function VideoCard({ video, onMoveNext, onMovePrev }: VideoCardPr
                 }`} 
               />
               <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                {formatPriority(video.priority)}
+                {formatPriority(video.priority || 'medium')}
               </span>
             </div>
             

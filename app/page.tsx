@@ -44,6 +44,8 @@ export default async function Home() {
     .or('is_archived.is.null,is_archived.eq.false')
     .order('updated_at', { ascending: false });
 
+  const pipelineVideos = videos?.filter(v => v.status !== 'Published') || [];
+
   return (
     <main className="flex min-h-screen flex-col bg-navy text-white pb-24">
       {/* Premium Header */}
@@ -67,7 +69,11 @@ export default async function Home() {
       </header>
 
       {/* Stats Bar Component */}
-      <StatsBar stats={gamification} />
+      <StatsBar 
+        publishedCount={gamification?.total_published || 0} 
+        streak={gamification?.current_streak || 0}
+        pipelineCount={pipelineVideos.length}
+      />
 
       {/* Quick Navigation Tabs */}
       <nav className="px-6 mb-8">
@@ -91,7 +97,7 @@ export default async function Home() {
       <KanbanBoard initialVideos={videos || []} />
 
       {/* Floating Action Button */}
-      <FAB />
+      <FAB userId={user.id} />
     </main>
   );
 }
