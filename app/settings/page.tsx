@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { ChevronLeft, User, LogOut, Award, Star, Mail, Shield } from 'lucide-react';
+import { ChevronLeft, User, LogOut, Award, Star, Mail, Shield, Lock } from 'lucide-react';
 import Link from 'next/link';
 
 export default function SettingsPage() {
@@ -13,6 +13,9 @@ export default function SettingsPage() {
   const [user, setUser] = useState<any>(null);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [newPassword, setNewPassword] = useState('');
+  const [updatingPassword, setUpdatingPassword] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
   useEffect(() => {
     async function getProfile() {
@@ -35,6 +38,27 @@ export default function SettingsPage() {
     await supabase.auth.signOut();
     router.push('/login');
     router.refresh();
+  };
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 6) {
+      setUpdateStatus({ type: 'error', message: 'Password must be at least 6 characters.' });
+      return;
+    }
+
+    setUpdatingPassword(true);
+    setUpdateStatus(null);
+
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+    if (error) {
+      setUpdateStatus({ type: 'error', message: error.message });
+    } else {
+      setUpdateStatus({ type: 'success', message: 'Password updated successfully!' });
+      setNewPassword('');
+    }
+    setUpdatingPassword(false);
   };
 
   const getLevel = (xp: number) => {
@@ -99,6 +123,44 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+        </section>
+
+        {/* Update Password */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-2 px-1">
+            <Lock className="w-4 h-4 text-teal" />
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Security Update</h3>
+          </div>
+          
+          <form onSubmit={handleUpdatePassword} className="space-y-3">
+            <div className="relative">
+              <input 
+                type="password"
+                placeholder="New Secure Password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-base font-bold outline-none focus:border-teal/50 transition-all placeholder:text-zinc-600"
+              />
+            </div>
+            
+            <button 
+              type="submit"
+              disabled={updatingPassword || !newPassword}
+              className="w-full bg-teal text-navy py-5 rounded-[2rem] text-xs font-black uppercase tracking-[0.2em] active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 shadow-xl shadow-teal/10"
+            >
+              {updatingPassword ? 'Syncing...' : 'Update Password'}
+            </button>
+
+            {updateStatus && (
+              <div className={`p-4 rounded-2xl text-center animate-in fade-in slide-in-from-top-2 duration-300 ${
+                updateStatus.type === 'success' ? 'bg-teal/10 text-teal border border-teal/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'
+              }`}>
+                <p className="text-[10px] font-black uppercase tracking-widest leading-relaxed">
+                  {updateStatus.message}
+                </p>
+              </div>
+            )}
+          </form>
         </section>
 
         {/* Security / Info */}
